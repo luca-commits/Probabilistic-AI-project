@@ -53,8 +53,16 @@ def mlp(sizes, activation, output_activation=nn.Identity):
 
     # TODO: Implement this function.
     # Hint: Use nn.Sequential to stack multiple layers of the network.
-    layers = [ *[nn.Linear()] for i in range(1, len(sizes))]
-    return nn.Sequential()
+    layers = []
+
+    for i in range(0, len(sizes)-2):
+        layers.append(nn.Linear(sizes[i], sizes[i+1]))
+        layers.append(activation())
+    
+    layers.append(nn.Linear(sizes[-2], sizes[-1]))
+    layers.append(output_activation())
+
+    return nn.Sequential(*layers)
 
 
 class Actor(nn.Module):
