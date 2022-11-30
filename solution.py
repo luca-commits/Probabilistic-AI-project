@@ -152,9 +152,6 @@ class Actor(nn.Module):
         else:
             return pi, None
 
-        raise NotImplementedError
-
-
 class Critic(nn.Module):
     """The network used by the value function."""
     def __init__(self, obs_dim, hidden_sizes, activation):
@@ -280,7 +277,7 @@ class VPGBuffer:
 
         # TODO: Implement discounted rewards-to-go calculation. 
         # Hint: use the discount_cumsum function 
-        # self.ret_buf[path_slice] = ...
+        self.ret_buf[path_slice] = discount_cumsum(self.rew_buf[path_sclice], self.gamma)
 
 
         # Update the path_start_idx
@@ -340,7 +337,15 @@ class Agent:
         # Hint: This function is only called during inference. You should use
         # `torch.no_grad` to ensure that it does not interfer with the gradient computation.
 
-        return 0, 0, 0
+        with torch.no_grad():
+            pi, _ = self.actor.forward(state)
+
+            act = pi.sample()
+            log_prob = self.actor._log_prob_from_distribution(pi, act)
+
+            v = self.critic.forward(state)
+
+        return act, v, log_prob
 
     def act(self, state):
         return self.step(state)[0]
@@ -364,9 +369,9 @@ class Agent:
         """
 
         # TODO: Implement this function.
-        # Currently, this just returns a random action.
+        act, v, log_prob = self.step(obs)
         
-        return np.random.choice([0, 1, 2, 3])
+        return act
 
 
 def train(env, seed=0):
@@ -465,12 +470,19 @@ def train(env, seed=0):
 
         #Hint: you need to compute a 'loss' such that its derivative with respect to the actor
         # parameters is the policy gradient. Then call loss.backwards() and actor_optimizer.step()
+        actor_loss = -data[ret].dot(data[logp])
+        actor_loss.backwards()
+
+        actor_optimizer.step()
+
 
         # We suggest to do 100 iterations of value function updates
         for _ in range(100):
             critic_optimizer.zero_grad()
             #compute a loss for the value function, call loss.backwards() and then
             #critic_optimizer.step()
+
+            
 
 
     return agent
