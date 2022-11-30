@@ -94,7 +94,9 @@ class Actor(nn.Module):
         # Hint: The logits_net returns for a given observation the log 
         # probabilities. You should use them to obtain a Categorical 
         # distribution.
-        raise NotImplementedError
+        logits = self.logits_net(obs)
+
+        return torch.distributions.Categorical(logits)
 
     def _log_prob_from_distribution(self, pi, act):
         """
@@ -118,7 +120,7 @@ class Actor(nn.Module):
 
         # TODO: Implement this function.
 
-        raise NotImplementedError
+        return pi.log_prob(action)
 
     def forward(self, obs, act=None):
         """
@@ -142,6 +144,13 @@ class Actor(nn.Module):
 
         # TODO: Implement this function.
         # Hint: If act is None, log_prob is also None.
+
+        pi = self._distribution(obs)
+
+        if act is not None:
+            return pi, self._log_prob_from_distribution(pi, act)
+        else:
+            return pi, None
 
         raise NotImplementedError
 
@@ -228,7 +237,11 @@ class VPGBuffer:
         assert self.ptr < self.max_size
 
         # TODO: Store new data in the respective buffers.
-
+        self.obs_buf[i] = obs
+        self.act_buf[i] = act
+        self.rew_buf[i] = rew
+        self.val_buf[i] = val
+        self.logp_buf[i] = logp
 
         # Update pointer after data is stored.
         self.ptr += 1
