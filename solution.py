@@ -95,8 +95,9 @@ class Actor(nn.Module):
         # probabilities. You should use them to obtain a Categorical 
         # distribution.
         logits = self.logits_net(obs)
+        probs = torch.nn.functional.softmax(logits, dim=-1)
 
-        return torch.distributions.Categorical(logits)
+        return torch.distributions.Categorical(probs)
 
     def _log_prob_from_distribution(self, pi, act):
         """
@@ -120,7 +121,7 @@ class Actor(nn.Module):
 
         # TODO: Implement this function.
 
-        return pi.log_prob(action)
+        return pi.log_prob(act)
 
     def forward(self, obs, act=None):
         """
@@ -234,11 +235,11 @@ class VPGBuffer:
         assert self.ptr < self.max_size
 
         # TODO: Store new data in the respective buffers.
-        self.obs_buf[i] = obs
-        self.act_buf[i] = act
-        self.rew_buf[i] = rew
-        self.val_buf[i] = val
-        self.logp_buf[i] = logp
+        self.obs_buf[self.ptr] = obs
+        self.act_buf[self.ptr] = act
+        self.rew_buf[self.ptr] = rew
+        self.val_buf[self.ptr] = val
+        self.logp_buf[self.ptr] = logp
 
         # Update pointer after data is stored.
         self.ptr += 1
@@ -271,13 +272,18 @@ class VPGBuffer:
         )
 
         # TODO: Implement TD residuals calculation.
-        # Hint: use the discount_cumsum function 
-        # self.tdres_buf[path_slice] = ...
+        # Hint: use the discount_cumsum function
+        deltas = []
+
+        for rew, val, val_shifted in zip(rews, vals, vals[-1:] + vals[:-1]):
+            deltas.append(rew + self.gamma * val_shifted - val)
+        
+        self.tdres_buf[path_slice] = discount_cumsum(np.array(deltas), self.gamma * self.lam)
 
 
         # TODO: Implement discounted rewards-to-go calculation. 
         # Hint: use the discount_cumsum function 
-        self.ret_buf[path_slice] = discount_cumsum(self.rew_buf[path_sclice], self.gamma)
+        self.ret_buf[path_slice] = discount_cumsum(rews, self.gamma)[:-1]
 
 
         # Update the path_start_idx
@@ -300,7 +306,7 @@ class VPGBuffer:
         self.tdres_buf = (self.tdres_buf - tdres_mean) / tdres_std
 
         data = dict(obs=self.obs_buf, act=self.act_buf, ret=self.ret_buf,
-                    tdres=self.tdres_buf, logp=self.logp_buf)
+                    tdres=self.tdres_buf, logp=self.logp_buf, rew=self.rew_buf, val=self.val_buf)
         return {k: torch.as_tensor(v, dtype=torch.float32) for k,v in data.items()}
 
 
@@ -345,7 +351,7 @@ class Agent:
 
             v = self.critic.forward(state)
 
-        return act, v, log_prob
+        return act.numpy(), v.numpy(), log_prob.numpy()
 
     def act(self, state):
         return self.step(state)[0]
@@ -369,7 +375,7 @@ class Agent:
         """
 
         # TODO: Implement this function.
-        act, v, log_prob = self.step(obs)
+        act, v, log_prob = self.step(torch.as_tensor(np.float32(obs)))
         
         return act
 
@@ -470,20 +476,25 @@ def train(env, seed=0):
 
         #Hint: you need to compute a 'loss' such that its derivative with respect to the actor
         # parameters is the policy gradient. Then call loss.backwards() and actor_optimizer.step()
-        actor_loss = -data[ret].dot(data[logp])
-        actor_loss.backwards()
+        advantages = data['tdres']
+
+        _, log_probs = agent.actor.forward(data['obs'], data['act'])
+
+        actor_loss = -advantages.dot(log_probs)
+        actor_loss.backward()
 
         actor_optimizer.step()
 
-
         # We suggest to do 100 iterations of value function updates
-        for _ in range(100):
-            critic_optimizer.zero_grad()
-            #compute a loss for the value function, call loss.backwards() and then
-            #critic_optimizer.step()
-
+        # for _ in range(100):
+        #     critic_optimizer.zero_grad()
+        #     #compute a loss for the value function, call loss.backwards() and then
+        #     #critic_optimizer.step()
             
+        #     critic_loss = torch.nn.functional.mse_loss(agent.critic.forward(data['obs']), data['ret'])
+        #     critic_loss.backward()
 
+        #     critic_optimizer.step()
 
     return agent
 
